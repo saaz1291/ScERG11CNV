@@ -7,7 +7,9 @@ Allruns_timecourse_presentationgraphs_6June2025.Rmd: Fig. 2 and Fig. S2 - Plotti
 
 All_outputs_analysis_2025Apr7.Rmd: Fig. 3 - analysis of growth rates of CNV vs control strains. Input = All_growthcurve_output_2025Apr7.xlsx
 
-Depth_visualisation_comparison_May82025.Rmd: Fig. 4
+Depth_visualisation_comparison_May82025.Rmd: Fig. 4 - visualisation of genome-wide read depth, comparing the ancestral strain with one CNV strain
 
-perbase_groupvisualisation-allcond_selected.Rmd: Fig. S3
+perbase_groupvisualisation-allcond_selected.Rmd: Fig. S3 - visualisation of genome-wide read depth, comparing multiple strains
+
+Doseresponse_all_Aug6.Rmd: Fig. S1 - getting IC50 from control strain growth data. Input = All_growthcurve_output-Aug6.xlsx
 
