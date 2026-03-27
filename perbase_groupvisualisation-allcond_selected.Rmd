@@ -1,0 +1,202 @@
+---
+title: "perbase_groupvisualisation"
+output: html_document
+date: "2025-12-09"
+---
+
+```{r libraries, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(zoo)
+
+perbase_files=c("DGY3301_June28_perbase.txt","3225_Oct16_perbase.txt","DGY3304_June28_perbase.txt","DGY3271_June28_perbase.txt","DGY3272_June28_perbase.txt","DGY3269_June28_perbase.txt","DGY3260_June28_perbase.txt","DGY3297_June28_perbase.txt","DGY3258_June28_perbase.txt","DGY3307_June28_perbase.txt")
+```
+
+
+```{r inputs}
+
+#Needed to provide a coordinate system genome-wide for plotting.
+chr_sizes=read.table("GCA_000146045.2_R64_Chr8ERG11_July20.fa.fai")
+
+#Regularize column names here for compatability later.
+chr_sizes=chr_sizes[,c(1,2)]
+colnames(chr_sizes)=c("Chr","Size")
+
+
+#perbase_files <- list.files(pattern = "_perbase.txt$", ignore.case = TRUE)
+
+n=length(perbase_files)
+
+prefixes=as.character(vector(length=n))
+
+for (i in (1:n)) {
+  a=strsplit(perbase_files[i],"_perbase.txt")[[1]]
+  prefixes[i]=a[1]
+}
+
+```
+
+Function that imports and processes the data to make it plottable. Import is simply by read.table.
+1. Get a cumulative locus coordinate, instead of chr-by-chr. This allows plotting on a single x-axis.
+2. Remove known loci with variable read depth to aid visualisation: rDNA on Chr 12, CUP1 on Chr 8.
+3. To decrease data size, reduce it to 500bp chunks, instead of perbase. Without this, visualisation of a single genome is hard; visualisation of multiple would be impossible.
+4. Get a rolling mean to make the graph look more parse-able. This must be done chr-by-chr.
+5. Rename the chromosomes from BK_ names to human-relevant Chr I, II, etc.
+
+```{r process_func}
+processs_perbase = function(perbase, chrsize) {
+  
+  depth=read.table(paste0(perbase))
+  colnames(depth)=c("Chr","Loc","Depth")
+  
+  #rename chromosomes so that the .fa.fai file (chr_sizes) and the depth file match each other.
+  #this code is based on the assumption that both the depth file and chr_sizes file have chromosomes in the same order (Chr 1 -> 16), and will fail otherwise. If the chr with other names have mtDNA, then it must be removed (assuming it's listed as the 17th and last chromosome)
+  
+  l=length(depth$Chr)
+  chrnames=unique(depth$Chr)
+  
+  if (length(chrnames>16)) {
+    removechr=chrnames[17]
+    depth=depth[depth$Chr!=paste0(removechr),]
+  }
+  
+  chrnames=unique(depth$Chr) #redo after removal
+  l=length(depth$Chr)
+  testfirst=depth$Chr[1]!=chrsize$Chr[1]
+  if (testfirst) {
+    # vectorised remapping of chromosome names (fast) #done by Copilot.
+    idx <- match(depth$Chr, chrnames)    
+    mapped <- chrsize$Chr[idx]           
+    if (any(is.na(mapped))) {
+      stop("Chromosome mapping produced NA values. Check that depth and chrsize have   compatible chromosome lists and order.")
+    }
+    depth$Chr <- mapped
+  }
+  
+  #Get a cumulative locus coordinate, which would run along the whole genome rather than   each individual chromosome.
+  cumusize=cumsum(chrsize$Size)
+  cumusize=cumusize[1:length(cumusize)-1]
+  cumusize=c(0,cumusize)
+  chrsize$cumusize=cumusize
+
+  comb_perbase=inner_join(depth,chrsize,by="Chr")
+  comb_perbase$cumu_loc=comb_perbase$Loc+comb_perbase$cumusize
+  rm(depth)
+  
+  
+  #Remove rDNA locus on Chr XII, which is known to have variable copy number.
+  pos1=421415
+  pos2=499475
+
+  rDNAchr=chrsize$Chr[12]
+  pos1=which(comb_perbase$Chr==rDNAchr & comb_perbase$Loc==pos1)
+  pos2=which(comb_perbase$Chr==rDNAchr & comb_perbase$Loc==pos2)
+
+  comb_perbase=comb_perbase[-c(pos1:pos2),]
+  
+  #By trial-and-error, I found that there is a variable region on Chr VIII, between 215000 and 220000 on that chromosome. It contains several genes, most interestingly CUP1-2, CUP1-1, and RSC30, as well as MED6 and CPR2. It seems likely that the variability in this region is due to the presence of CUP1. I will therefore exclude this region from the visualisation, just like with the rDNA locus on Chr 12.
+  
+  pos3=215000
+  pos4=220000
+
+  varchr=chrsize$Chr[8]
+  pos3=which(comb_perbase$Chr==varchr & comb_perbase$Loc==pos3)
+  pos4=which(comb_perbase$Chr==varchr & comb_perbase$Loc==pos4)
+
+  comb_perbase=comb_perbase[-c(pos3:pos4),]
+  
+  #Normalise depth
+  reldepth=comb_perbase$Depth/mean(comb_perbase$Depth)
+  comb_perbase$reldepth=reldepth
+  rm(reldepth)
+  
+  #Bin data into 500bp chunks; get the avg depth of each chunk. This NEEDS to be done chr-by-chr to avoid messing up coordinates at either end of "adjacent" chromosomes.
+  Chrnames=unique(comb_perbase$Chr)
+  l=length(Chrnames)
+
+  Newcomb_perbase=comb_perbase
+  Newcomb_perbase=Newcomb_perbase[-c(1:length(Newcomb_perbase$Chr)),]
+  
+  for (i in (1:l)) {
+    relchr=Chrnames[i]
+    relchrdata=comb_perbase[comb_perbase$Chr==relchr,]
+    relchrdata=aggregate(relchrdata,by=list(cut(relchrdata$Loc,seq(0,max(relchrdata$Loc),100))),mean)
+    relchrdata=relchrdata[,-1]
+    relchrdata$Chr=relchr
+    Newcomb_perbase=rbind(Newcomb_perbase,relchrdata)
+  }
+  rm(comb_perbase)
+  
+  #Get rolling average in a chr-wise manner
+  rollmeandepth=as.numeric(vector(length=length(Newcomb_perbase$Chr)))
+runningtotal=1
+
+  for (i in (1:l)) {
+    relchr=Chrnames[i]
+    relchrdata=Newcomb_perbase[Newcomb_perbase$Chr==relchr,]
+    rollmeandepth_relchr=rollmean(relchrdata$reldepth,1000,fill=1)
+    tobeadded=length(rollmeandepth_relchr)
+    rollmeandepth[runningtotal:(runningtotal+tobeadded-1)]=rollmeandepth_relchr
+    runningtotal=runningtotal+tobeadded
+  }
+  Newcomb_perbase$rollmeandepth=rollmeandepth
+  
+  rm(rollmeandepth)
+  
+  #Renaming chromosomes - this is trivially easy in this case because the inputs have all chromosomes in order
+  
+  Oldchrnames=unique(chrsize$Chr)
+
+  Newchrnames=c("Chr I", "Chr II", "Chr III", "Chr IV", "Chr V", "Chr VI", "Chr VII", "Chr VIII", "Chr IX", "Chr X", "Chr XI", "Chr XII", "Chr XIII", "Chr XIV", "Chr XV", "Chr XVI")
+
+  Allchrnames=Newcomb_perbase$Chr
+  l1=length(Allchrnames)
+
+  for (i in (1:l1)) {
+    chrnamecurrent=Allchrnames[i]
+    relindex=which(Oldchrnames==chrnamecurrent)
+    chrnamenew=Newchrnames[relindex]
+    Allchrnames[i]=chrnamenew
+  }
+
+  Newcomb_perbase$Newchr=Allchrnames
+  
+  return(Newcomb_perbase)
+}
+
+```
+
+Apply this processing function to each input file
+```{r process_loop, warning=FALSE}
+
+combined_data_list=list()
+
+for (i in (1:n)) {
+  combined_data_list[[prefixes[i]]]=processs_perbase(perbase_files[i],chr_sizes)
+}
+
+```
+
+
+```{r plotting}
+#ggplot(data=combined_data_list$DGY3227_Oct16) + geom_line(aes(x=cumu_loc, y=rollmeandepth), color="darkgrey") + ylim(c(0.5,2.1)) + scale_x_continuous(label = combined_data_list$DGY3227_Oct16$Newchr, breaks = combined_data_list$DGY3227_Oct16$cumusize) + theme_bw() + theme(axis.text.x = element_text(angle = 60, size = 8, vjust = 0.5),axis.title.x=element_blank()) + ylab ("Normalised read depth")
+
+#ggplot(data=combined_data_list$DGY3227_Oct16) + geom_line(size=1, aes(x=cumu_loc, y=rollmeandepth, color=Newchr)) + ylim(c(0.5,2.1)) + scale_x_continuous(label = combined_data_list$DGY3227_Oct16$Newchr, breaks = combined_data_list$DGY3227_Oct16$cumusize) + theme_bw() + theme(axis.ticks.x = element_text(angle = 60, size = 8, vjust = 0.5), axis.title.x=element_blank(), legend.position="none") +   ylab("Normalised read depth")
+```
+
+```{r comb_plot, fig.height=7.5, fig.width=12}
+combined_df <- bind_rows(combined_data_list, .id = "Sample")
+
+#ggplot(data=combined_df) + geom_line(linewidth=1, aes(x=cumu_loc, y=rollmeandepth, color=Newchr)) + ylim(c(0.5,2.1)) + facet_wrap(~Sample, ncol=1) +  scale_x_continuous(label = combined_data_list$DGY3227_Oct16$Newchr) + theme_bw() + theme(axis.ticks.x = element_text(angle = 60, size = 8, vjust = 0.5), axis.title.x=element_blank(), legend.position="none") +   ylab("Normalised read depth")
+
+
+first_sample <- combined_data_list[[1]]
+chr_breaks <- first_sample$cumusize[!duplicated(first_sample$Newchr)]
+chr_labels <- first_sample$Newchr[!duplicated(first_sample$Newchr)]
+
+Lineplots = ggplot(data=combined_df) + geom_line(size=1, aes(x=cumu_loc, y=rollmeandepth, color=Newchr)) + ylim(c(0.5,2.7)) + facet_wrap(~Sample,ncol=2) +  scale_x_continuous(breaks = chr_breaks, labels = chr_labels) + theme_bw() + theme(axis.text.x = element_text(angle = 60, size = 8, vjust = 0.5), axis.title.x=element_blank(), legend.position="none") +   ylab("Normalised read depth")
+
+Lineplots
+ggsave("./allcond_selected2.pdf", plot = Lineplots, device = "pdf")
+```
+
+
