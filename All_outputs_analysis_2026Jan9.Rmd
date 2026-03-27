@@ -1,0 +1,168 @@
+---
+title: "Analysis of growth curve outputs"
+author: "Saaz Sakrikar"
+date: "2025-1-4"
+output: html_document
+---
+
+This code takes in manually combined growthcurver output from all previous growth measurements. I am using only haploid control strains DGY1, DGY2807, DGY500, DGY1315, and DGY3183 here. 
+
+It evaluates whether growth rate or area under curve is a more consistent and meaningful metric. It evaluates looks for outlier batches, where all replicates from a given batch are out-of-whack with all other batches.
+
+Having found the correct metric (AUC, because of 34C and 37C high FLC data which becomes nonsensical when looked at by growth rate), and removed outliers, it plots a fitness landscape for S cerevisiae across 3 temps (30, 34, 37C) and 7 fluconazole concs (0, 4, 8, 16, 32, 64, 128mg/uL). This is part of Fig. 1.
+
+```{r setup, warning=FALSE}
+library(ggplot2)
+library(readxl)
+library(forcats)
+library(tidyverse)
+
+All_growthcurve_output = read_excel("Control_growthcurve_output_2026Jan9.xlsx")
+```
+
+
+```{r overview_plot}
+#separate by type - haploid and diploid - and temperature, within each type
+Haploids=All_growthcurve_output[All_growthcurve_output$Type=="Haploid",]
+Haploids30C=Haploids[Haploids$Temperature==30,]
+Haploids34C=Haploids[Haploids$Temperature==34,]
+Haploids37C=Haploids[Haploids$Temperature==37,]
+
+Haploidcontrols=Haploids[Haploids$ERG11_loc=="Native",]
+Haploidcontrols30C=Haploidcontrols[Haploidcontrols$Temperature==30,]
+Haploidcontrols34C=Haploidcontrols[Haploidcontrols$Temperature==34,]
+Haploidcontrols37C=Haploidcontrols[Haploidcontrols$Temperature==37,]
+  
+Diploids=All_growthcurve_output[All_growthcurve_output$Type=="Diploid",]
+Diploid30C=Diploids[Diploids$Temperature==30,]
+Diploid34C=Diploids[Diploids$Temperature==34,]
+Diploid37C=Diploids[Diploids$Temperature==37,]
+
+HvD=All_growthcurve_output[All_growthcurve_output$ERG11_loc=="Native",]
+#HvD=HvD[HvD$Strain!="DGY3627",]
+Hvd30C=HvD[HvD$Temperature==30,]
+Hvd34C=HvD[HvD$Temperature==34,]
+Hvd37C=HvD[HvD$Temperature==37,]
+
+#Look for outliers within each type
+ggplot(Haploidcontrols30C,aes(x=as.factor(FLC_conc),y=r)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + ggtitle("G.R. - hap, 30C") + theme_bw()
+#J9 is a visible outlier at 16 and 32 ng/uL.
+
+ggplot(Haploidcontrols34C,aes(x=as.factor(FLC_conc),y=r)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + ggtitle("G.R. - hap, 34C") + theme_bw()
+
+ggplot(Haploidcontrols34C,aes(x=as.factor(FLC_conc),y=auc_l)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + ggtitle("AUC - hap, 34C") + theme_bw()
+#AUC more realistic at higher temp and FLC conc.
+#N21 is a total outlier batch. D5 doesn't look great either. Remove both.
+
+ggplot(Haploidcontrols30C,aes(x=as.factor(FLC_conc),y=auc_l)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + ggtitle("AUC - hap, 30C") + theme_bw()
+
+ggplot(Haploidcontrols37C,aes(x=as.factor(FLC_conc),y=auc_l)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + ggtitle("AUC - hap, 37C") + theme_bw()
+#All D batches are wildly different than other batches. Remove them all.
+
+ggplot(Haploids30C,aes(x=ERG11_loc,y=auc_l)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + facet_wrap(~FLC_conc) + ggtitle("AUC - all hap, 30C") + theme_bw()
+#Roughly makes sense
+
+ggplot(Haploids34C,aes(x=ERG11_loc,y=auc_l)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + facet_wrap(~FLC_conc) + ggtitle("AUC - all hap, 34C") + theme_bw()
+
+ggplot(Haploids37C,aes(x=ERG11_loc,y=auc_l)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + facet_wrap(~FLC_conc) + ggtitle("AUC - all hap, 37C") + theme_bw()
+#And again
+
+#Note - the removed high temp batches: N21, and D batches, were Nov-Dec 2025, all made from a single batch of media, which might be why they were all off and different than all other batches.
+```
+Remove identified outlier batches
+```{r}
+
+Filtered_growthcurve_output=All_growthcurve_output[All_growthcurve_output$run!="J9",]
+#Filtered_growthcurve_output=Filtered_growthcurve_output[Filtered_growthcurve_output$run!="A26",]
+Filtered_growthcurve_output=Filtered_growthcurve_output[Filtered_growthcurve_output$run!="N21",]
+Filtered_growthcurve_output=Filtered_growthcurve_output[Filtered_growthcurve_output$run!="D5",]
+Filtered_growthcurve_output=Filtered_growthcurve_output[Filtered_growthcurve_output$run!="D10",]
+Filtered_growthcurve_output=Filtered_growthcurve_output[Filtered_growthcurve_output$run!="D12",]
+Filtered_growthcurve_output=Filtered_growthcurve_output[Filtered_growthcurve_output$run!="D18",]
+
+#separate by type
+Haploids=Filtered_growthcurve_output[Filtered_growthcurve_output$Type=="Haploid",]
+Haploids30C=Haploids[Haploids$Temperature==30,]
+Haploids34C=Haploids[Haploids$Temperature==34,]
+Haploids37C=Haploids[Haploids$Temperature==37,]
+
+Haploidcontrols=Haploids[Haploids$ERG11_loc=="Native",]
+Haploidcontrols30C=Haploidcontrols[Haploidcontrols$Temperature==30,]
+Haploidcontrols34C=Haploidcontrols[Haploidcontrols$Temperature==34,]
+Haploidcontrols37C=Haploidcontrols[Haploidcontrols$Temperature==37,]
+  
+Diploids=Filtered_growthcurve_output[Filtered_growthcurve_output$Type=="Diploid",]
+Diploid30C=Diploids[Diploids$Temperature==30,]
+Diploid34C=Diploids[Diploids$Temperature==34,]
+Diploid37C=Diploids[Diploids$Temperature==37,]
+
+HvD=Filtered_growthcurve_output[Filtered_growthcurve_output$ERG11_loc=="Native",]
+Hvd30C=HvD[HvD$Temperature==30,]
+Hvd34C=HvD[HvD$Temperature==34,]
+Hvd37C=HvD[HvD$Temperature==37,]
+```
+
+```{r tempeffect}
+ggplot(Haploidcontrols,aes(x=as.factor(Temperature),y=auc_l)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + facet_wrap(~FLC_conc) +ggtitle("AUC - haploid") + theme_bw()
+
+#Haploidcontrols_relconcs=Haploidcontrols[Haploidcontrols$FLC_conc!=4,]
+#Haploidcontrols_relconcs=Haploidcontrols_relconcs[Haploidcontrols_relconcs$FLC_conc!=128,]
+#ggplot(Haploidcontrols_relconcs,aes(x=as.factor(Temperature),y=auc_l)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=run, color=run)) + facet_wrap(~FLC_conc) +ggtitle("AUC - hap - common concs") + theme_bw()
+```
+
+```{r heatmap}
+HaploidcontrolAUCsummary=aggregate(Haploidcontrols$auc_l,list(Haploidcontrols$FLC_conc, Haploidcontrols$Temperature),mean)
+colnames(HaploidcontrolAUCsummary)=c("FLC_conc","Temperature","mean_AUC")
+
+#Make everything relative to 30C/noFLC
+HaploidcontrolAUCsummary$rel_AUC=HaploidcontrolAUCsummary$mean_AUC/HaploidcontrolAUCsummary$mean_AUC[1]
+#Express it as a percentage
+HaploidcontrolAUCsummary$rel_AUC=HaploidcontrolAUCsummary$rel_AUC*100
+
+Hmap=ggplot(HaploidcontrolAUCsummary, aes(x=as.factor(FLC_conc), y=as.factor(Temperature), fill=rel_AUC)) + geom_tile() + scale_fill_gradient(low="khaki1", high="limegreen") + theme_bw() + theme(panel.border=element_blank(), panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text=element_text(face="bold", size=10), axis.title=element_text(face="bold", size=12)) + xlab("FLC conc ng/uL") + ylab("Temperature C")
+
+Hmap
+ggsave("./HaploidcontrolAUChmap.pdf", plot = Hmap, device = "pdf")
+```
+
+
+
+```{r stderror}
+#95% CIs are 1.96 X standard deviation / sqrt (# observations). Calculated here from across replicates for each strain/conc, and added as a vertical line to each strain/conc.
+
+Haploidcontrols %>%
+  group_by(Temperature,FLC_conc) %>%
+  summarise(
+    sem=1.96*sd(auc_l)/sqrt(n()),
+    auc=mean(auc_l),
+  ) -> Meanerror
+
+Meanerror
+
+write.table(Meanerror, "AUC_meanserrors.csv", row.names=FALSE)
+
+ggplot(Meanerror, aes(x=as.factor(FLC_conc), y=auc)) + geom_dotplot(binaxis="y", stackdir="center", aes(fill=as.factor(Temperature), color=as.factor(Temperature))) + geom_errorbar(width=0, aes(ymin=auc-sem, ymax=auc+sem)) + ggtitle("Control strain AUC")  + theme_bw()
+
+ggplot(Meanerror, aes(x=FLC_conc, y=auc, color=as.factor(Temperature))) + geom_line() + geom_point() + geom_errorbar(width=0, aes(ymin=auc-sem, ymax=auc+sem)) + ggtitle("Control strain AUC")  + theme_bw()
+```
+
+```{r }
+#95% CIs are 1.96 X standard deviation / sqrt (# observations). Calculated here from across replicates for each strain/conc, and added as a vertical line to each strain/conc.
+
+HvD %>%
+  group_by(Temperature,FLC_conc, Type) %>%
+  summarise(
+    sem=1.96*sd(auc_l)/sqrt(n()),
+    auc=mean(auc_l),
+  ) -> Meanerror_HvD
+
+Meanerror_HvD
+
+write.table(Meanerror_HvD, "HvD_AUCmeanserror.csv", row.names=FALSE, sep = "\t")
+
+ggplot(Meanerror_HvD, aes(x=as.factor(FLC_conc), y=auc, color=as.factor(Temperature), shape=Type, linetype=Type)) + geom_point(position=position_dodge(width=0.5), size=3) + geom_errorbar(aes(ymin=auc-sem, ymax=auc+sem), position=position_dodge(width=0.5), width=0.1) + scale_shape_manual(values=c("Haploid"=16, "Diploid"=1)) + scale_color_manual(values=c("30"="yellow3","34"="darkorange","37"="red"), name="Temp. (°C)") + scale_linetype_manual(values=c("Haploid"="solid", "Diploid"="dashed"), name="Background ploidy") + labs(x="FLC conc ng/uL", y="Mean AUC", title="Growth by temp. and type, across concs") + theme_bw()
+
+
+ggplot(Meanerror_HvD, aes(x=FLC_conc, y=auc, color=as.factor(Temperature), linetype=Type, group=interaction(Temperature, Type))) + geom_line() + geom_point(size=1.5) + geom_errorbar(aes(ymin=auc-sem, ymax=auc+sem), width=0.1) + scale_color_manual(values=c("30"="yellow3","34"="darkorange","37"="red"), name="Temperature (°C)") + scale_linetype_manual(values=c("Haploid"="solid", "Diploid"="dashed"), name="Type") + labs(x="FLC conc ng/uL", y="Mean AUC", title="Growth across FLC, temps, ploidy") + theme_bw()
+
+```
