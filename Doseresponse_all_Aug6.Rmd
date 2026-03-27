@@ -1,0 +1,160 @@
+---
+title: "Analysis of growth curve outputs"
+author: "Saaz Sakrikar"
+date: "2024-08-06"
+output: html_document
+---
+
+Dose-response curves for IC50 calculation adapted from Babrham Bioinformatics tutorial: https://www.youtube.com/watch?v=yZRvzYsWqJw
+and on This is based on Doseresponse_pilot_June17.Rmd
+
+Made after "Combined_outputs_analysis_June15". 
+As a result, outlier batch J9 is already removed.
+Changes made to input file (addition of replicates column) to accommodate dose-response code.
+Includes data after June 15, which was the last run included in the June17 RMD file and input.
+Because of the new type of data added (FLC concs 0, 2, 4, 128, 256, with nothing in between), care needs to be taken over replicate numbering.
+
+
+```{r setup, warning=FALSE,message=FALSE}
+library(ggplot2)
+library(readxl)
+library(forcats)
+library(drc)
+library(tidyverse)
+library(broom)
+
+All_growthcurve_output = read_excel("All_growthcurve_output-Aug6.xlsx")
+```
+
+
+To follow the tutorial mentioned above, this will be calculated for each CNV strain vs all control strains.
+That must be done by for loop. 
+
+Initial setup data for use in IC50 calculation:
+1. Combine all controls from all batches (based on "Combined_outputs_analysis_June15" showing similarity across batches).
+2. Create new variable including replicate
+3. Plot the data (each replicate visible)
+4. Find mean growth rate for each type (CNV or control) in each FLC conc, and then find the max of these. Normalise all rates by the relevant max (for control and CNV separately). Tidy and plot normalised data.
+5. Plotting mean data with std error
+6. Fitting to IC50 curve.
+7. Showing model fit.
+
+
+```{r Combined_code,warning=FALSE}
+
+#Find CNV strains
+CNV_growthcurve_output=All_growthcurve_output[All_growthcurve_output$Type=="CNV",]
+CNVstrains=unique(CNV_growthcurve_output$Strain)
+nstrains=length(CNVstrains)
+
+
+for (i in (1:nstrains)) {
+  
+  #Combine controls
+  Mod_growthcurve_output=All_growthcurve_output[All_growthcurve_output$Type=="Control",]
+  
+  #Choose CNV strain of interest
+  Pilot_strain=CNVstrains[i]
+  
+  Pilot_output=All_growthcurve_output[All_growthcurve_output$Strain==paste(Pilot_strain),]
+
+  Mod_growthcurve_output=rbind(Mod_growthcurve_output,Pilot_output)
+
+  Mod_growthcurve_output$Newsample=paste(Mod_growthcurve_output$Type,"_",Mod_growthcurve_output$Replicate)
+
+  Raw_plot=ggplot(Mod_growthcurve_output,aes(x=FLC_conc, y=r, group=Newsample, colour=Type)) + geom_line() + geom_point() + theme_bw() + scale_x_log10() + ggtitle(paste("Raw data ", Pilot_strain, " vs All Controls - log scale"))
+  print(Raw_plot)
+
+  #Normalise to max growth rate for CNV/control
+  
+  Mod_growthcurve_output %>%
+    group_by(FLC_conc,Type) %>%
+      summarise(
+      max_response=mean(r)
+      ) %>%
+    ungroup() %>%
+    arrange(desc(max_response)) %>%
+      group_by(Type) %>%
+      slice(1) %>%
+      ungroup() %>%
+    select(-FLC_conc) -> max_rates
+
+
+Mod_growthcurve_output %>%
+  left_join(max_rates) %>%
+  mutate(
+    norm_r=100*r/max_response
+  ) %>%
+  select(FLC_conc,Strain,Type,Newsample,Replicate,r,norm_r) -> drc_norm
+
+  norm_plot=ggplot(drc_norm,aes(x=FLC_conc, y=norm_r, group=Newsample, colour=Type)) + geom_line() + geom_point() + theme_bw() + scale_x_log10() + ggtitle(paste("Normalised growth rate ", Pilot_strain, " vs All Controls - log scale"))
+  print(norm_plot)
+  
+  
+  #Plot normalised data - mean and SE across reps
+  drc_norm %>%
+  group_by(FLC_conc,Type) %>%
+  summarise(
+    sem = sd(norm_r)/sqrt(n()),
+    response=mean(norm_r)
+  ) -> drc_per_condition
+
+  meanerror_plot=ggplot(drc_per_condition,aes(x=FLC_conc, y=response, ymin=response-sem, ymax=response+sem, colour=Type)) + geom_line() + geom_point() +  geom_errorbar(width=0.1) + theme_bw() + scale_x_log10() + ggtitle(paste("Normalised mean data ", Pilot_strain, " vs controls - log scale"))
+  print(meanerror_plot)
+  
+  #fit to model
+  
+  drm (
+  data = drc_per_condition,
+  formula = response ~ FLC_conc,
+  curveid = Type,
+  fct = LL.4(names=c("Hill slope","Min", "Max","EC50"))
+) -> model
+
+  print(tidy(model))
+
+  #Show predicted data and fit
+  
+  dose=c(0,4,8,16,32,64,128,0,4,8,16,32,64,128)
+  condition=c("Control","Control","Control","Control","Control","Control","Control","CNV","CNV","CNV","CNV","CNV","CNV","CNV")
+  predicted_data = data.frame(
+  FLC_conc = dose, Type = condition
+)
+
+  predict(model,newdata=predicted_data) -> predicted_data$prediction
+
+  predicted_plot=ggplot(data=drc_per_condition,aes(x=FLC_conc,y=response,colour=Type)) + geom_point() + scale_x_log10() + theme_bw() + geom_line(data=predicted_data,aes(x=FLC_conc,y=prediction)) + ggtitle(paste("Normalised mean and predicted data ", Pilot_strain, " vs controls - log scale"))
+  print(predicted_plot)
+  
+}
+```
+
+Find mean grwoth rate for each type (CNV or control) in each FLC conc, and then find the max of these. Normalise all rates by the rele vant max (for control and CNV separately). Tidy and plot normalised data.
+
+
+
+
+
+
+
+adding error bar to mean data, and plotting it
+```{r error_bar}
+
+
+```
+
+Fitting to IC50 curve.
+
+```{r fitting}
+
+```
+
+Showing model fit
+
+```{r fit}
+
+
+
+```
+
+
