@@ -1,0 +1,243 @@
+---
+title: "Graphs showing trajectory of ERG11 CNVs"
+author: "Saaz Sakrikar"
+date: "2025-6-6"
+output: html_document
+---
+
+Mostly hard-coded and self-explanatory.
+
+Script "plotprocessing_passage.R" is used here.
+```{r libraries,warning=FALSE,message=FALSE}
+library(readxl)
+library(ggplot2)
+library(reshape2)
+library(gghighlight)
+library(forcats)
+library(RColorBrewer)
+library(ggh4x)
+source("plotprocessing_passage.R")
+```
+
+Load each tab of my excel sheet.
+
+```{r load_data}
+Jun12_30C=read_excel("Apr2025_allruns.xlsx",sheet="30C_June12")
+
+Dec22_30C=read_excel("Apr2025_allruns.xlsx",sheet="30C_Dec22")
+
+Nov1_34C=read_excel("Apr2025_allruns.xlsx",sheet="34C_Nov1")
+
+Sep20_37C=read_excel("Apr2025_allruns.xlsx",sheet="37C_Sep20")
+
+Dec22_37C=read_excel("Apr2025_allruns.xlsx",sheet="37C_Dec22")
+```
+
+Data processing: making plottable dataframes using melt from reshape, adding a column of "genotype" to allow grouping of lines by genotype. All of this is done within a script.
+
+```{r initial_processing}
+Jun12_30C_melted = plotprocessing_passage(Jun12_30C)
+colnames(Jun12_30C_melted)=c("Passage","variable","value","FLC_conc")
+
+Dec22_30C_melted = plotprocessing_passage(Dec22_30C)
+colnames(Dec22_30C_melted)=c("Passage","variable","value","FLC_conc")
+
+Nov1_34C_melted = plotprocessing_passage(Nov1_34C)
+colnames(Nov1_34C_melted)=c("Passage","variable","value","FLC_conc")
+
+Sep20_37C_melted = plotprocessing_passage(Sep20_37C)
+colnames(Sep20_37C_melted)=c("Passage","variable","value","FLC_conc")
+
+Dec22_37C_melted = plotprocessing_passage(Dec22_37C)
+colnames(Dec22_37C_melted)=c("Passage","variable","value","FLC_conc")
+```
+
+
+```{r combine}
+PasslistJ30=vector(length=length(Jun12_30C_melted$Passage))
+l=length(PasslistJ30)
+PasslistJ30[1:l]=30
+Jun12_30C_melted$Temp=PasslistJ30
+Jun12_30C_melted$Batch="J12"
+
+PasslistD30=vector(length=length(Dec22_30C_melted$Passage))
+l=length(PasslistD30)
+PasslistD30[1:l]=30
+Dec22_30C_melted$Temp=PasslistD30
+Dec22_30C_melted$Batch="D22_30"
+
+PasslistN34=vector(length=length(Nov1_34C_melted$Passage))
+l=length(PasslistN34)
+PasslistN34[1:l]=34
+Nov1_34C_melted$Temp=PasslistN34
+Nov1_34C_melted$Batch="N1"
+
+PasslistS37=vector(length=length(Sep20_37C_melted$Passage))
+l=length(PasslistS37)
+PasslistS37[1:l]=37
+Sep20_37C_melted$Temp=PasslistS37
+Sep20_37C_melted$Batch="S20"
+
+PasslistD37=vector(length=length(Dec22_37C_melted$Passage))
+l=length(PasslistD37)
+PasslistD37[1:l]=37
+Dec22_37C_melted$Temp=PasslistD37
+Dec22_37C_melted$Batch="D22_37"
+
+Allruns_bypass=rbind(Jun12_30C_melted, Dec22_30C_melted, Nov1_34C_melted, Sep20_37C_melted, Dec22_37C_melted)
+Allruns_bypass$sample=paste(Allruns_bypass$variable,"_",Allruns_bypass$Temp)
+Allruns_bypass$Condition=paste(Allruns_bypass$Temp,"_",Allruns_bypass$FLC_conc)
+Allruns_bypass$Temp=as.factor(Allruns_bypass$Temp)
+```
+
+```{r combined_graphs,fig.show="hold",message=FALSE,warning=FALSE}
+
+facet_design= c(
+    "
+    AABBCC
+    DDEEFF
+    ##GG##
+    "
+)
+Bypassage_smoothed_figure = ggplot(Allruns_bypass,aes(x=Passage,y=value,group=fct_inorder(sample),color=Temp)) +  facet_manual(~fct_inseq(FLC_conc),design=facet_design) + geom_smooth(se=FALSE) + theme_bw() + ggtitle("Emergence of ERG11 CNVs") + theme(text=element_text(size=12,face="bold"),) + ylab("CNV %") + scale_color_manual(values=c("yellow3","darkorange","red")) + xlab("# passages")
+
+Bypassage_smoothed_figure
+#ggsave("./Bypassage_smoothed_figure.tiff", plot = Bypassage_smoothed_figure, device = "tiff")
+#ggsave("./Bypassage_smoothed_figure.pdf", plot = Bypassage_smoothed_figure, device = "pdf")
+
+#Splitting by both temperature and FLC conc
+facet_design_2split=c("
+                AABBCC
+                DD##EE
+                FF##GG
+                HHIIJJ
+                KKLLMM
+                NNOOPP
+                QQRR##")
+
+Allruns_bypass=Allruns_bypass[order(as.numeric(Allruns_bypass$FLC_conc)),]
+
+Smoothed_figure_2split = ggplot(Allruns_bypass,aes(x=Passage,y=value,group=fct_inorder(sample),color=Temp)) +  facet_manual(~fct_inorder(Condition),design=facet_design_2split) + geom_smooth(se=FALSE) + theme_bw() + theme(text=element_text(size=11,face="bold"), strip.background=element_blank(), strip.text.x=element_blank()) + ylab("CNV %") + scale_color_manual(values=c("yellow3","darkorange","red")) + xlab("# passages")
+
+Smoothed_figure_2split
+#ggsave("./Smoothed_figure_2split.tiff", plot = Smoothed_figure_2split, device = "tiff")
+#ggsave("./Smoothed_figure_2split.pdf", plot = Smoothed_figure_2split, device = "pdf")
+```
+
+Show temperature dependence by making graphs across temps at FLC 32.
+```{r ppt_tempgraphs, fig.show="hold",warning=FALSE,message=FALSE}
+
+FLC32_bypass_allruns=Allruns_bypass[Allruns_bypass$FLC_conc=="32",]
+
+FLC32_bypass_figure=ggplot(FLC32_bypass_allruns,aes(x=Passage,y=value,group=fct_inorder(sample),color=Temp)) + facet_wrap(~FLC_conc) + geom_smooth(se=FALSE) + theme_bw() + ggtitle("Strong temperature dependence of CNV dynamics") + theme(text=element_text(size=12,face="bold"),) + ylab("Two copy %") + scale_color_manual(values=c("yellow3","darkorange","red")) + ylim(c(0,100)) + xlab("#passages")
+FLC32_bypass_figure
+#ggsave("./FLC32_bypass.tiff", plot = FLC32_bypass_figure, device = "tiff")
+#ggsave("./FLC32_bypass.pdf", plot = FLC32_bypass_figure, device = "pdf")
+
+FLC32_bypass_30Cruns=FLC32_bypass_allruns[FLC32_bypass_allruns$Temp=="30",]
+
+FLC32_bypass_30Conly=ggplot(FLC32_bypass_30Cruns,aes(x=Passage,y=value,group=fct_inorder(sample),color=Temp)) + facet_wrap(~FLC_conc) + geom_smooth(se=FALSE) + theme_bw() + ggtitle("No emergence of ERG11 CNVs in 32ng/uL FLC at 30C") + theme(text=element_text(size=12,face="bold"),) + ylab("Two copy %") + scale_color_manual(values=c("yellow3","darkorange","red")) + ylim(c(0,100)) + xlab("# passages")
+FLC32_bypass_30Conly
+#ggsave("./FLC32_bypass_30Conly.tiff", plot = FLC32_bypass_30Conly, device = "tiff")
+#ggsave("./FLC32_bypass_30Conly.pdf", plot = FLC32_bypass_30Conly, device = "pdf")
+
+FLC32_bypass_no37runs=FLC32_bypass_allruns[FLC32_bypass_allruns$Temp!="37",]
+
+FLC32_bypass_no37=ggplot(FLC32_bypass_no37runs,aes(x=Passage,y=value,group=fct_inorder(sample),color=Temp)) + facet_wrap(~FLC_conc) + geom_smooth(se=FALSE) + theme_bw() + ggtitle("Strong selection for CNVs after small temp. increase") + theme(text=element_text(size=12,face="bold"),) + ylab("Two copy %") + scale_color_manual(values=c("yellow3","darkorange","red")) + ylim(c(0,100)) + xlab("# passages")
+FLC32_bypass_no37
+#ggsave("./FLC32_bypass_no37C.tiff", plot = FLC32_bypass_no37, device = "tiff")
+#ggsave("./FLC32_bypass_no37C.pdf", plot = FLC32_bypass_no37, device = "pdf")
+```
+
+Show concentration dependence - across 3 concs at 30ng/uL
+
+```{r ppt_concgraphs}
+C30_bypass_allruns=Allruns_bypass[Allruns_bypass$Temp=="30",]
+
+C30_bypass_relruns=C30_bypass_allruns[C30_bypass_allruns$FLC_conc=="8"| C30_bypass_allruns$FLC_conc=="16" | C30_bypass_allruns$FLC_conc=="32",]
+
+C30_bypass_figure=ggplot(C30_bypass_relruns,aes(x=Passage,y=value,group=fct_inorder(sample),color=Temp)) + facet_wrap(~fct_inorder(FLC_conc)) + geom_smooth(se=FALSE) + theme_bw() + ggtitle("Emergence of ERG11 CNVs in 30C at lower concs") + theme(text=element_text(size=12,face="bold"),) + ylab("Two copy %") + scale_color_manual(values=c("yellow3","darkorange","red")) + ylim(c(0,100)) + xlab("#passages")
+C30_bypass_figure
+#ggsave("./30C_bypass_figure.tiff", plot = C30_bypass_figure, device = "tiff")
+#ggsave("./30C_bypass_figure.pdf", plot = C30_bypass_figure, device = "pdf")
+
+# C30_bypass_figure=FLC32_bypass_allruns[FLC32_bypass_allruns$Temp=="30",]
+# 
+# FLC32_bypass_30Conly=ggplot(FLC32_bypass_30Cruns,aes(x=Passage,y=value,group=fct_inorder(sample),color=Temp)) + facet_wrap(~FLC_conc) + geom_smooth(se=FALSE) + theme_bw() + ggtitle("No emergence of ERG11 CNVs in 32ng/uL FLC at 30C") + theme(text=element_text(size=12,face="bold"),) + ylab("Two copy %") + scale_color_manual(values=c("yellow3","darkorange","red")) + ylim(c(0,100)) + xlab("# passages)")
+# FLC32_bypass_30Conly
+#ggsave("./FLC32_bypass_30Conly.tiff", plot = FLC32_bypass_30Conly, device = "tiff")
+#ggsave("./FLC32_bypass_30Conly.pdf", plot = FLC32_bypass_30Conly, device = "pdf")
+
+
+```
+
+Remake this figure in all the specific FLC concs (8, 16, 32) where CNVs were actually observed.
+
+
+```{r Selected_concs, fig.height=7, fig.width=12}
+
+Allruns_bypass_selectedconc=Allruns_bypass
+Allruns_bypass_selectedconc$FLC_conc=as.numeric(Allruns_bypass_selectedconc$FLC_conc)
+Allruns_bypass_selectedconc=Allruns_bypass_selectedconc[Allruns_bypass_selectedconc$FLC_conc>4,]
+Allruns_bypass_selectedconc=Allruns_bypass_selectedconc[Allruns_bypass_selectedconc$FLC_conc<64,]
+Allruns_bypass_selectedconc$FLC_conc=as.factor(Allruns_bypass_selectedconc$FLC_conc)
+
+Evolved_bypass_smoothed = ggplot(Allruns_bypass_selectedconc,aes(x=Passage,y=value,group=fct_inorder(sample),color=Temp)) + facet_wrap(~fct_rev(fct_inseq(FLC_conc)),ncol=1) + geom_smooth(se=FALSE) + theme_bw() + theme(text=element_text(size=12,face="bold"),) + ylab("CNV %") + scale_color_manual(values=c("yellow3","darkorange","red")) + coord_fixed(ratio=0.15) + xlab("# passages")
+
+Evolved_bypass_smoothed
+#ggsave("./Evolved_bypass.tiff", plot = Evolved_bypass_smoothed, device = "tiff")
+ggsave("./Evolved_bypass.pdf", plot = Evolved_bypass_smoothed, device = "pdf")
+
+Evolved_bypass_truncated = ggplot(Allruns_bypass_selectedconc,aes(x=Passage,y=value,group=fct_inorder(sample),color=Temp)) + facet_wrap(~fct_rev(fct_inseq(FLC_conc)),ncol=1) + geom_smooth(se=FALSE) + theme_bw() + scale_x_continuous(limits=c(0,8)) + theme(text=element_text(size=12,face="bold"),) + ylab("CNV %") + scale_color_manual(values=c("yellow3","darkorange","red")) + coord_fixed(ratio=0.18) + xlab("# passages")
+
+Evolved_bypass_truncated
+#ggsave("./Evolved_bypass_truncated.tiff", plot = Evolved_bypass_truncated, device = "tiff")
+#ggsave("./Evolved_bypass_truncated.pdf", plot = Evolved_bypass_truncated, device = "pdf")
+
+```
+
+Display evolution data as a heatmap rather than a line plot. Quick visual inspection possible.
+```{r heatmap, fig.show="hold",warning=FALSE,message=FALSE}
+
+Allruns_bypass_ordered=Allruns_bypass[order(as.numeric(Allruns_bypass$FLC_conc),as.numeric(Allruns_bypass$Temp)),]
+
+#Code that creates an index of samples, which is used to add a vertical line to the heatmap. This vertical line is colour-coded based on this #indexing and the temperature of evolution of the samples, giving  a #guide to the data without needing extra words. 
+
+Tempsamples=Allruns_bypass_ordered$sample
+Indexing=as.numeric(vector(length=length(Tempsamples)))
+Indexing=Indexing+1
+
+for (i in 2:length(Tempsamples)) {
+  value=Indexing[i]
+  if (Tempsamples[i-1]!=Tempsamples[i]) {
+    Indexing[i:length(Indexing)]=value+1 
+  }
+}
+
+Allruns_bypass_ordered$indexing=Indexing
+
+Heatmap = ggplot(Allruns_bypass_ordered,aes(x=Passage,y=fct_inorder(sample),fill=value)) + geom_tile(color="white", lwd=0.5) + scale_fill_gradient(low="aquamarine", high="navyblue", na.value="white") + theme_bw() + scale_x_continuous(expand=c(0.005,0)) + theme(strip.background = element_blank(),strip.text.x = element_blank(), axis.text.y=element_blank(), axis.title.y=element_blank()) + geom_segment(aes(x = -0.5, xend = -0.5, y = indexing, yend = c(indexing[-1], max(indexing)), color = Temp), size = 2) + geom_segment(aes(x = -0.75, xend = -0.75, y = indexing, yend = c(indexing[-1], max(indexing)), color = as.factor(FLC_conc)), size = 2) + scale_color_manual(values=c("yellow3","darkorange","red","beige","black", "bisque2","bisque3","blanchedalmond","bisque4","bisque1")) 
+
+Heatmap
+#ggsave("./Heatmap_evolutions.tiff", plot = Heatmap, device = "tiff")
+#ggsave("./Heatmap_evolutions.pdf", plot = Heatmap, device = "pdf")
+
+Heatmap_truncated = ggplot(Allruns_bypass_ordered,aes(x=Passage,y=fct_inorder(sample),fill=value)) + geom_tile(color="white", lwd=0.45) + scale_fill_gradient(low="aquamarine", high="navyblue", na.value="grey80") + theme_bw()  + scale_x_continuous(limits=c(-0.7,8.5), expand=c(0,0.05)) + theme(strip.background = element_blank(),strip.text.x = element_blank(), axis.text.y=element_blank(), axis.title.y=element_blank()) + geom_segment(aes(x = -0.6, xend = -0.6, y = indexing, yend = c(indexing[-1], max(indexing)), color = Temp), size = 3) + scale_color_manual(values=c("yellow3","darkorange","red")) + coord_fixed(ratio=0.12)
+
+Heatmap_truncated
+#ggsave("./Heatmap_8pass.tiff", plot = Heatmap_truncated, device = "tiff")
+#ggsave("./Heatmap_8pass.pdf", plot = Heatmap_truncated, device = "pdf")
+
+```
+
+```{r batches}
+C30_bypass_relruns2=C30_bypass_relruns[C30_bypass_relruns$FLC_conc=="16",]
+
+
+ggplot(C30_bypass_relruns2,aes(x=Passage,y=value,group=fct_inorder(variable),color=Batch)) + facet_wrap(~fct_inseq(FLC_conc)) +  geom_smooth(se=FALSE) + theme_bw() + geom_point() + ggtitle("ERG11 CNVs in haploid S cer 30C") + theme(text=element_text(size=12,face="bold"), legend.position="none") + ylab("Two copy %")
+
+C37_bypass_allruns=Allruns_bypass[Allruns_bypass$Temp=="37",]
+C37_bypass_relruns=C37_bypass_allruns[C37_bypass_allruns$FLC_conc=="16" | C37_bypass_allruns$FLC_conc=="32",]
+
+ggplot(C37_bypass_relruns,aes(x=Passage,y=value,group=fct_inorder(variable),color=Batch)) + facet_wrap(~fct_inseq(FLC_conc)) +  geom_smooth(se=FALSE) + theme_bw() + geom_point() + ggtitle("ERG11 CNVs in haploid S cer 37C") + theme(text=element_text(size=12,face="bold"), legend.position="none") + ylab("Two copy %")
+```
