@@ -14,3 +14,5 @@ perbase_groupvisualisation-allcond_selected.Rmd: Fig. S3 - visualisation of geno
 Doseresponse_all_Aug6.Rmd: Fig. S1 - getting IC50 from control strain growth data. Input = All_growthcurve_output-Aug6.xlsx
 
 growth_curves_Apr29.Rmd: Analysis of raw growth data, using a single batch as an example. Inputs = Apr29_meta.csv and Apr29_growth.csv
+
+lea_coulson_m.R: Used to estimate number of mutations per culture (m) from median number of observed mutant colonies (r) in the FACu fluctuation assay.
